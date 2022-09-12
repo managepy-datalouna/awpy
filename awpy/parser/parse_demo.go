@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"bufio"
 
 	dem "github.com/markus-wa/demoinfocs-golang/v2/pkg/demoinfocs"
 	common "github.com/markus-wa/demoinfocs-golang/v2/pkg/demoinfocs/common"
@@ -40,6 +41,7 @@ type ParserOpts struct {
 	TradeTime       int64  `json:"tradeTime"`
 	RoundBuyStyle   string `json:"roundBuyStyle"`
 	DamagesRolled   bool   `json:"damagesRolledUp"`
+	TickIntervals   []string  `json:"tickIntervals"`
 }
 
 // MatchPhases holds lists of when match events occurred
@@ -935,6 +937,7 @@ func main() {
 	demoIDPtr := fl.String("demoid", "", "Demo string ID")
 	jsonIndentationPtr := fl.Bool("jsonindentation", false, "Indent JSON file")
 	outpathPtr := fl.String("out", "", "Path to write output JSON")
+	ticksFilePtr := fl.String("ticksfile", "", "Tick intervals file path")
 
 	err := fl.Parse(os.Args[1:])
 	checkError(err)
@@ -948,6 +951,7 @@ func main() {
 	damagesRolled := *damagesRolledPtr
 	jsonIndentation := *jsonIndentationPtr
 	outpath := *outpathPtr
+	ticksFile := *ticksFilePtr
 
 	// Read in demofile
 	f, err := os.Open(demPath)
@@ -989,12 +993,24 @@ func main() {
 	// Create empty smoke tracking list
 	smokes := []Smoke{}
 
+	// Read tick intervals file
+	file, err := os.Open(ticksFile)
+	defer file.Close()
+	checkError(err)
+	fileScanner := bufio.NewScanner(file)
+    fileScanner.Split(bufio.ScanLines)
+    var tickIntervals []string
+    for fileScanner.Scan() {
+        tickIntervals = append(tickIntervals, fileScanner.Text())
+    }
+
 	// Set parsing options
 	parsingOpts := ParserOpts{}
 	parsingOpts.ParseRate = int(parseRate)
 	parsingOpts.TradeTime = tradeTime
 	parsingOpts.RoundBuyStyle = roundBuyStyle
 	parsingOpts.DamagesRolled = damagesRolled
+	parsingOpts.TickIntervals = tickIntervals
 	currentGame.ParsingOpts = parsingOpts
 
 	currentRound := GameRound{}
@@ -2382,7 +2398,13 @@ func main() {
 			currentRound.TRoundMoneySpend = int64(gs.TeamTerrorists().MoneySpentThisRound())
 		}
 		
-		if (roundInFreezetime == 0) && (currentFrameIdx == 0) && (parseFrames == true) {
+		currentTick := int64(gs.IngameTick())
+		tickIsInInterval := tickInInterval(
+		    currentTick,
+		    currentGame.ParsingOpts.TickIntervals,
+		)
+
+		if (roundInFreezetime == 0) && (currentFrameIdx == 0) && (parseFrames == true)  && (tickIsInInterval == true){
 			currentFrame := GameFrame{}
 			currentFrame.IsKillFrame = false
 
@@ -2568,4 +2590,25 @@ func checkError(err error) {
 	if (err != nil) {
 		panic(err)
 	}
+}
+
+// Check if a tick belongs to an interval defined in a file
+func tickInInterval (
+    tick int64,
+    tickInterval []string,
+) bool {
+    if len(tickInterval) == 0 {
+        return true
+    }
+
+    for _, value := range tickInterval {
+        intervals := strings.Split(value, "|")
+        startTick, _ := strconv.ParseInt(intervals[0], 10, 64)
+        endTick, _ := strconv.ParseInt(intervals[1], 10, 64)
+
+        if tick >= startTick && tick <= endTick {
+            return true
+        }
+    }
+    return false
 }

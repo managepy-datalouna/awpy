@@ -20,6 +20,7 @@ class DemoParser:
         trade_time (int): Length of the window for a trade (in seconds). Default is 5.
         dmg_rolled (bool): Boolean if you want damages rolled up (since multiple damages for a player can happen in 1 tick from the same weapon.)
         buy_style (string): Buy style string, one of "hltv" or "csgo"
+        ticks_file (string): A path to a file containing tick intervals for frames parsing
 
     Raises:
         ValueError: Raises a ValueError if the Golang version is lower than 1.17
@@ -38,6 +39,7 @@ class DemoParser:
         dmg_rolled=False,
         buy_style="hltv",
         json_indentation=False,
+        ticks_file="",
     ):
         # Set up logger
         logging.basicConfig(
@@ -120,6 +122,9 @@ class DemoParser:
         self.logger.info("Parse kill frames set to " + str(self.parse_kill_frames))
         self.logger.info("Output json indentation set to " + str(self.json_indentation))
 
+        self.ticks_file = os.path.abspath(ticks_file)
+        self.logger.info(f"Tick intervals file is set to {self.ticks_file}")
+
         # Set parse error to False
         self.parse_error = False
 
@@ -178,6 +183,11 @@ class DemoParser:
             self.parser_cmd.append("--parsekillframes")
         if self.json_indentation:
             self.parser_cmd.append("--jsonindentation")
+        if self.ticks_file:
+            self.parser_cmd.extend([
+                "--ticksfile",
+                self.ticks_file,
+            ])
         proc = subprocess.Popen(
             self.parser_cmd,
             stdout=subprocess.PIPE,
